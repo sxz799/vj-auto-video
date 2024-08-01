@@ -1,4 +1,4 @@
-module weplusvideo
+module vj_auto_video
 
 go 1.22
 
