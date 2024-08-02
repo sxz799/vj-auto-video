@@ -152,8 +152,7 @@ func CollectionLinks() []string {
 			continue
 		}
 		text, _ := element2.Text()
-		//if text != "已完成" && text != "" {
-		if text != "" {
+		if text != "已完成" && text != "" {
 			link, _ := element.GetAttribute("href")
 			links = append(links, link)
 		}
