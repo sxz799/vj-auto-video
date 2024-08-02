@@ -25,22 +25,38 @@ func switchFrame(op string) {
 	}
 }
 
-func GetCurrentVideoProcess() int {
-	switchFrame("top")
+// CheckClassProcessDone 获取当前章节的观看进度
+func CheckClassProcessDone(i, all int) (bool, error) {
+
 	var processElement selenium.WebElement
 	var err error
+	count := 0
 	for {
+		if count > 5 {
+			return false, err
+		}
+		switchFrame("top")
 		processElement, err = wb.FindElement(selenium.ByClassName, "vj-6f86217f")
 		if err != nil {
 			log.Println("没有找到进度条,5秒后重试")
 			time.Sleep(5 * time.Second)
+			count++
 			continue
 		}
 		text, _ := processElement.Text()
 		processText := strings.ReplaceAll(text, "%", "")
 		process, _ := strconv.Atoi(processText)
-		return process
+		title, _ := wb.Title()
+		log.Println(i, "/", all, " ==《 "+title+" 》 == 观看进度:", processText)
+		return process == 100 && !CheckVideoPlaying(), nil
 	}
+}
+
+// CheckVideoPlaying 检查视频是否正在播放
+func CheckVideoPlaying() bool {
+	switchFrame("video")
+	_, err := wb.FindElement(selenium.ByClassName, "vjs-playing")
+	return err == nil
 }
 
 func HandleVideo(i, all int, link string) {
@@ -54,16 +70,17 @@ func HandleVideo(i, all int, link string) {
 	element.Click()
 	time.Sleep(5 * time.Second)
 	for {
-		videoInitProcess := GetCurrentVideoProcess()
-		time.Sleep(5 * time.Second)
-		title, _ := wb.Title()
-		if videoInitProcess == 100 {
-			log.Println("当前章节观看完成,正在判断是否存在下一章节")
+		done, err2 := CheckClassProcessDone(i, all)
+		if err2 != nil {
+			break
+		}
+		// 进度到达100%而且视频不再播放才寻找下一章节
+		if done {
 			switchFrame("top")
 			findElement, err22 := wb.FindElement(selenium.ByClassName, "vj-99c3bcc7")
 			if err22 != nil {
 				log.Println("没有找到更多章节,继续观看下一链接")
-				return
+				break
 			}
 			text, _ := findElement.Text()
 			if text == "下一节" {
@@ -71,28 +88,27 @@ func HandleVideo(i, all int, link string) {
 				continue
 			} else {
 				log.Println("没有找到下一节按钮,继续观看下一链接")
-				return
-			}
-		} else {
-			log.Println(i, "/", all, "->", title, " == >观看进度:", videoInitProcess, "%")
-		}
-		switchFrame("video")
-
-		_, err1 := wb.FindElement(selenium.ByClassName, "vjs-playing")
-		if err1 == nil {
-			log.Println("视频正在播放中...10秒后继续!")
-			time.Sleep(10 * time.Second)
-			continue
-		} else {
-			findElement2, err2 := wb.FindElement(selenium.ByClassName, "vjs-button-icon")
-			if err2 == nil {
-				findElement2.Click()
-				log.Println("点击了播放按钮")
-			} else {
-				log.Println("视频播放完成")
 				break
 			}
+		} else {
+			playing := CheckVideoPlaying()
+			if playing {
+				log.Println("视频正在播放中...10秒后继续!")
+				time.Sleep(10 * time.Second)
+				continue
+			} else {
+				switchFrame("video")
+				playButton, err3 := wb.FindElement(selenium.ByClassName, "vjs-button-icon")
+				if err3 == nil {
+					playButton.Click()
+					log.Println("点击了播放按钮")
+				} else {
+					log.Println("没有找到播放按钮,继续观看下一链接")
+					break
+				}
+			}
 		}
+
 	}
 	return
 
@@ -136,7 +152,8 @@ func CollectionLinks() []string {
 			continue
 		}
 		text, _ := element2.Text()
-		if text != "已完成" && text != "" {
+		//if text != "已完成" && text != "" {
+		if text != "" {
 			link, _ := element.GetAttribute("href")
 			links = append(links, link)
 		}
