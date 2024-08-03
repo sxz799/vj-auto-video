@@ -48,7 +48,8 @@ func CheckClassProcessDone(i, all int) (bool, error) {
 		process, _ := strconv.Atoi(processText)
 		title, _ := wb.Title()
 		log.Println(i, "/", all, " ==《 "+title+" 》 == 观看进度:", processText)
-		return process == 100 && !CheckVideoPlaying(), nil
+		//这里判断视频是否正在播放时防止出现alert
+		return process > 5 && !CheckVideoPlaying(), nil
 	}
 }
 
@@ -59,12 +60,19 @@ func CheckVideoPlaying() bool {
 	return err == nil
 }
 
+// CheckTextReading 检查是否观看电子书
+func CheckTextReading() bool {
+	switchFrame("top")
+	_, err := wb.FindElement(selenium.ByID, "iframetext")
+	return err == nil
+}
+
 func HandleVideo(i, all int, link string) {
 	wb.Get(link)
 	time.Sleep(5 * time.Second)
 	element, err := wb.FindElement(selenium.ByClassName, "ant-btn-primary")
 	if err != nil {
-		log.Println("没有找到观看按钮,继续观看下一课程！")
+		log.Println("没有找到开始学习或继续学习按钮,观看下一课程！")
 		return
 	}
 	element.Click()
@@ -76,6 +84,7 @@ func HandleVideo(i, all int, link string) {
 		}
 		// 进度到达100%而且视频不再播放才寻找下一章节
 		if done {
+			log.Println("当前视频播放完成，正在判断有没有下一节")
 			switchFrame("top")
 			findElement, err22 := wb.FindElement(selenium.ByClassName, "vj-99c3bcc7")
 			if err22 != nil {
@@ -85,9 +94,16 @@ func HandleVideo(i, all int, link string) {
 			text, _ := findElement.Text()
 			if text == "下一节" {
 				findElement.Click()
+				//判断弹窗
+				BT, err3 := wb.FindElement(selenium.ByClassName, "ant-btn-primary")
+				if err3 == nil {
+					fmt.Println("找到确定按钮")
+					BT.Click()
+				}
+
 				continue
 			} else {
-				log.Println("没有找到下一节按钮,继续观看下一链接")
+				log.Println("不是按钮不是下一节,继续观看下一链接")
 				break
 			}
 		} else {
@@ -96,16 +112,22 @@ func HandleVideo(i, all int, link string) {
 				log.Println("视频正在播放中...10秒后继续!")
 				time.Sleep(10 * time.Second)
 				continue
+			}
+			reading := CheckTextReading()
+			if reading {
+				log.Println("电子书正在查看中...10秒后继续!")
+				time.Sleep(10 * time.Second)
+				continue
+			}
+			//尝试点击播放按钮
+			switchFrame("video")
+			playButton, err3 := wb.FindElement(selenium.ByClassName, "vjs-button-icon")
+			if err3 == nil {
+				playButton.Click()
+				log.Println("点击了播放按钮")
 			} else {
-				switchFrame("video")
-				playButton, err3 := wb.FindElement(selenium.ByClassName, "vjs-button-icon")
-				if err3 == nil {
-					playButton.Click()
-					log.Println("点击了播放按钮")
-				} else {
-					log.Println("没有找到播放按钮,继续观看下一链接")
-					break
-				}
+				log.Println("没有找到播放按钮,继续观看下一链接")
+				break
 			}
 		}
 
@@ -187,7 +209,8 @@ func InitWebDriver() bool {
 	}
 
 	chromeCaps := chrome.Capabilities{
-		Path: "",
+		// DebuggerAddr: "127.0.0.1:9222", //调试时使用
+		Path:         "",
 		Args: []string{
 			"--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
 			"--remote-allow-origins=*",
@@ -195,7 +218,6 @@ func InitWebDriver() bool {
 	}
 	//以上是设置浏览器参数
 	caps.AddChrome(chromeCaps)
-
 	// 调起chrome浏览器
 	wb, err = selenium.NewRemote(caps, fmt.Sprintf("http://localhost:%d/wd/hub", 9515))
 	if err != nil {
