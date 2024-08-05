@@ -49,7 +49,7 @@ func CheckClassProcessDone(i, all int) (bool, error) {
 		title, _ := wb.Title()
 		log.Println(i, "/", all, " ==《 "+title+" 》 == 观看进度:", processText)
 		//这里判断视频是否正在播放时防止出现alert
-		return process > 5 && !CheckVideoPlaying(), nil
+		return process == 100, nil
 	}
 }
 
@@ -94,11 +94,12 @@ func HandleVideo(i, all int, link string) {
 			text, _ := findElement.Text()
 			if text == "下一节" {
 				findElement.Click()
+				time.Sleep(3 * time.Second)
 				//判断弹窗
-				BT, err3 := wb.FindElement(selenium.ByClassName, "ant-btn-primary")
+				but, err3 := wb.FindElement(selenium.ByClassName, "ant-btn-primary")
 				if err3 == nil {
 					fmt.Println("找到确定按钮")
-					BT.Click()
+					but.Click()
 				}
 
 				continue
@@ -210,7 +211,7 @@ func InitWebDriver() bool {
 
 	chromeCaps := chrome.Capabilities{
 		// DebuggerAddr: "127.0.0.1:9222", //调试时使用
-		Path:         "",
+		Path: "",
 		Args: []string{
 			"--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
 			"--remote-allow-origins=*",
