@@ -13,6 +13,7 @@ import (
 
 var service *selenium.Service
 var wb selenium.WebDriver
+var nextPageButton selenium.WebElement
 
 func switchFrame(op string) {
 	switch op {
@@ -23,6 +24,36 @@ func switchFrame(op string) {
 	case "top":
 		_ = wb.SwitchFrame(nil)
 	}
+}
+
+func findNextPageButton() (find bool) {
+	waitCount := 0
+	var err error
+	for {
+		nextPageButton, err = wb.FindElement(selenium.ByClassName, "ant-pagination-next")
+
+		if err != nil {
+			if waitCount > 5 {
+				log.Println("没有找到下一页按钮")
+				find = false
+				break
+			}
+			log.Println("没有找到下一页按钮,继续等待...")
+			time.Sleep(5 * time.Second)
+			waitCount++
+			continue
+		} else {
+			attribute, _ := nextPageButton.GetAttribute("aria-disabled")
+			if attribute == "true" {
+				log.Println("下一页按钮被禁用,当前是最后一页")
+				find = false
+				break
+			}
+			find = true
+			break
+		}
+	}
+	return find
 }
 
 // CheckClassProcessDone 获取当前章节的观看进度
@@ -47,7 +78,7 @@ func CheckClassProcessDone(i, all int) (bool, error) {
 		processText := strings.ReplaceAll(text, "%", "")
 		process, _ := strconv.Atoi(processText)
 		title, _ := wb.Title()
-		log.Println(i, "/", all, " ==《 "+title+" 》 == 观看进度:", processText)
+		fmt.Printf("\r%d / %d ==《 %s 》== 观看进度: %s %% ", i, all, title, processText)
 		//这里判断视频是否正在播放时防止出现alert
 		return process == 100, nil
 	}
@@ -84,7 +115,8 @@ func HandleVideo(i, all int, link string) {
 		}
 		// 进度到达100%而且视频不再播放才寻找下一章节
 		if done {
-			log.Println("当前视频播放完成，正在判断有没有下一节")
+
+			log.Println("\n当前视频播放完成，正在判断有没有下一节")
 			switchFrame("top")
 			findElement, err22 := wb.FindElement(selenium.ByClassName, "vj-99c3bcc7")
 			if err22 != nil {
@@ -110,13 +142,11 @@ func HandleVideo(i, all int, link string) {
 		} else {
 			playing := CheckVideoPlaying()
 			if playing {
-				log.Println("视频正在播放中...10秒后继续!")
 				time.Sleep(10 * time.Second)
 				continue
 			}
 			reading := CheckTextReading()
 			if reading {
-				log.Println("电子书正在查看中...10秒后继续!")
 				time.Sleep(10 * time.Second)
 				continue
 			}
@@ -126,6 +156,7 @@ func HandleVideo(i, all int, link string) {
 			if err3 == nil {
 				playButton.Click()
 				log.Println("点击了播放按钮")
+				time.Sleep(2 * time.Second)
 			} else {
 				log.Println("没有找到播放按钮,继续观看下一链接")
 				break
@@ -137,34 +168,14 @@ func HandleVideo(i, all int, link string) {
 
 }
 
-func CollectionLinks() []string {
+func HandlePageLinks() []string {
 	links := make([]string, 0)
-	wb.Get("https://qy.51vj.cn/app/home/school/course/1/0?appid=1003&corpid=wp58yYCQAAx65D52VX68yo_9ZU37eTgQ")
-	for {
-		_, err := wb.FindElement(selenium.ByClassName, "ant-pagination")
-		if err != nil {
-			log.Println("没有找到分页,继续等待5秒")
-			time.Sleep(5 * time.Second)
-			continue
-		} else {
-			break
-		}
+	elements, err := wb.FindElements(selenium.ByClassName, "vj-a1d5dd58")
+	if err != nil {
+		log.Println("没有找到课程列表")
+		return links
 	}
-	for {
-		_, err := wb.FindElement(selenium.ByClassName, "ant-pagination")
-		if err == nil {
-			log.Println("找到分页,请手动选择120条/页")
-			time.Sleep(5 * time.Second)
-			continue
-		} else {
-			log.Println("切换完成,程序继续")
-			break
-		}
-	}
-	time.Sleep(5 * time.Second)
-
-	elements, _ := wb.FindElements(selenium.ByClassName, "vj-a1d5dd58")
-	log.Println("共发现", len(elements), "个课程")
+	log.Println("本页共发现", len(elements), "个课程")
 	for _, element := range elements {
 		element1, err1 := element.FindElement(selenium.ByClassName, "vj-74b8d6e3")
 		if err1 != nil {
@@ -180,6 +191,38 @@ func CollectionLinks() []string {
 			links = append(links, link)
 		}
 	}
+	log.Println("本页共收集", len(links), "个课程")
+	return links
+}
+
+func CollectionLinks(url string) []string {
+	links := make([]string, 0)
+	if url != "" {
+		wb.Get(url)
+	}
+	log.Println("等待页面加载完成,您可以手动切换至更多分页以加快视频收集速度")
+	time.Sleep(10 * time.Second)
+
+	for {
+		_, err := wb.FindElement(selenium.ByClassName, "vj-a1d5dd58")
+		if err != nil {
+			log.Println("等待页面加载中...")
+			time.Sleep(5 * time.Second)
+			continue
+		} else {
+			break
+		}
+	}
+
+	links = append(links, HandlePageLinks()...)
+
+	for findNextPageButton() {
+		nextPageButton.Click()
+		time.Sleep(5 * time.Second)
+		tLinks := HandlePageLinks()
+		links = append(links, tLinks...)
+	}
+
 	log.Println("共", len(links), "个课程需要观看")
 	return links
 }
@@ -210,13 +253,14 @@ func InitWebDriver() bool {
 	}
 
 	chromeCaps := chrome.Capabilities{
-		// DebuggerAddr: "127.0.0.1:9222", //调试时使用
+		//DebuggerAddr: "127.0.0.1:9222",
 		Path: "",
 		Args: []string{
 			"--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
 			"--remote-allow-origins=*",
 		},
 	}
+
 	//以上是设置浏览器参数
 	caps.AddChrome(chromeCaps)
 	// 调起chrome浏览器
@@ -225,6 +269,7 @@ func InitWebDriver() bool {
 		log.Println("链接 webDriver 失败", err.Error())
 		return false
 	}
+	log.Println("链接 webDriver 成功")
 	return true
 }
 
@@ -235,9 +280,13 @@ func main() {
 		log.Println("初始化WebDriver失败")
 		return
 	}
+	log.Println("初始化WebDriver 成功")
+	var url string
+	url = "https://qy.51vj.cn/app/home/school/course/1/0?appid=1003&corpid=wp58yYCQAAx65D52VX68yo_9ZU37eTgQ"
 
-	links := CollectionLinks()
+	links := CollectionLinks(url)
 	for i, link := range links {
+		fmt.Println("第", i+1, "个课程：", link)
 		HandleVideo(i+1, len(links), link)
 	}
 	log.Println(len(links), "个课程播放完成！")
