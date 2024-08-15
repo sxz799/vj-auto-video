@@ -115,8 +115,8 @@ func HandleVideo(i, all int, link string) {
 		}
 		// 进度到达100%而且视频不再播放才寻找下一章节
 		if done {
-
-			log.Println("\n当前视频播放完成，正在判断有没有下一节")
+			fmt.Printf("\n")
+			log.Println("当前视频播放完成，正在判断有没有下一节")
 			switchFrame("top")
 			findElement, err22 := wb.FindElement(selenium.ByClassName, "vj-99c3bcc7")
 			if err22 != nil {
@@ -153,6 +153,7 @@ func HandleVideo(i, all int, link string) {
 			//尝试点击播放按钮
 			switchFrame("video")
 			playButton, err3 := wb.FindElement(selenium.ByClassName, "vjs-button-icon")
+			fmt.Printf("\n")
 			if err3 == nil {
 				playButton.Click()
 				log.Println("点击了播放按钮")
