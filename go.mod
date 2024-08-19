@@ -1,4 +1,4 @@
-module vj_auto_video
+module vj-auto-video
 
 go 1.22
 
